@@ -1,3 +1,6 @@
 [submodule "Q1UnoStakeVault/lib/forge-std"]
 	path = Q1UnoStakeVault/lib/forge-std
 	url = https://github.com/foundry-rs/forge-std
+[submodule "Q1UnoStakeVault/lib/solady"]
+	path = Q1UnoStakeVault/lib/solady
+	url = https://github.com/vectorized/solady
