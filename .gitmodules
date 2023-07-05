@@ -4,3 +4,6 @@
 [submodule "Q1UnoStakeVault/lib/solady"]
 	path = Q1UnoStakeVault/lib/solady
 	url = https://github.com/vectorized/solady
+[submodule "UnoCodeSolutions/lib/openzeppelin-contracts"]
+	path = UnoCodeSolutions/lib/openzeppelin-contracts
+	url = https://github.com/OpenZeppelin/openzeppelin-contracts
