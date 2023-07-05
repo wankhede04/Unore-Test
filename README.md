@@ -8,8 +8,7 @@ forge install
 forge build
 ```
 ## Solution links
-### 1
-Please build a Vault smart contract as following.
+### 1 Please build a Vault smart contract as following.
 
 1. Users stakes ETH and get $UNO rewards based on staking period and the deposited amount.
 2. There should be one function which users can re-stake their $UNO reward automatically.
