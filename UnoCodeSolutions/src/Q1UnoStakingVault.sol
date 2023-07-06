@@ -36,6 +36,7 @@ contract Vault is Ownable {
     uint256 public startBlock; // The block number when staking starts
 
     uint256 public totalStakedEth; // Total amount of ETH staked in the contract
+    uint256 public totalInsuranceClaimed; // Total insurance claims
 
     uint256 private constant DECIMALS = 1e18;
     uint256 public insuranceClaimLimit; // The maximum percentage of total balance that can be claimed at once
@@ -76,22 +77,15 @@ contract Vault is Ownable {
     function deposit() public payable {
         UserInfo storage user = userInfo[msg.sender];
         _updatePool();
-
-        // If the user has already staked, then automatically restake their rewards
         if (user.amount > 0) {
-            uint256 pending = user.amount * pool.accUnoPerShare / DECIMALS - user.rewardDebt;
-            if (pending > 0) {
-                uint256 restaked = _restakeRewards(msg.sender, pending);
-                user.amount += restaked;
-                totalStakedEth += restaked;
+            uint256 pending = getAdjustedStake(msg.sender) * pool.accUnoPerShare / DECIMALS - user.rewardDebt;
+            if(pending > 0) {
+                safeUnoTransfer(msg.sender, pending);
             }
         }
-
-        user.amount += msg.value;
-        user.rewardDebt = user.amount * pool.accUnoPerShare / DECIMALS;
-
         totalStakedEth += msg.value;
-
+        user.amount += msg.value;
+        user.rewardDebt = getAdjustedStake(msg.sender) * pool.accUnoPerShare / DECIMALS;
         emit Deposit(msg.sender, msg.value);
     }
 
@@ -101,102 +95,87 @@ contract Vault is Ownable {
     */
     function withdraw(uint256 _amount) public {
         UserInfo storage user = userInfo[msg.sender];
-
-        require(user.amount >= _amount, "withdraw: not good");
-
+        require(getAdjustedStake(msg.sender) >= _amount, "withdraw: not good");
         _updatePool();
-
-        // Automatically restake any pending rewards before withdrawing
-        uint256 pending = user.amount * pool.accUnoPerShare / DECIMALS - user.rewardDebt;
-        if (pending > 0) {
-            uint256 restaked = _restakeRewards(msg.sender, pending);
-            user.amount += restaked;
-            totalStakedEth += restaked;
+        uint256 pending = getAdjustedStake(msg.sender) * pool.accUnoPerShare / DECIMALS - user.rewardDebt;
+        if(pending > 0) {
+            safeUnoTransfer(msg.sender, pending);
         }
-
-        user.amount -= _amount;
-        user.rewardDebt = user.amount * pool.accUnoPerShare / DECIMALS;
-
-        totalStakedEth -= _amount;
-
-        // UNO is a preminted token, therefore safely transferring it here instead of minting it
-        // better implementations can be possible
-        SafeTransferLib.safeTransferETH(msg.sender, _amount);
+        if(_amount > 0) {
+            user.amount -= _amount;
+            totalStakedEth -= _amount;
+            payable(msg.sender).transfer(_amount);
+        }
+        user.rewardDebt = getAdjustedStake(msg.sender) * pool.accUnoPerShare / DECIMALS;
         emit Withdraw(msg.sender, _amount);
     }
 
     /**
-    * @notice Updates the staking pool
-    * @dev This function is used to distribute the UNO rewards to the stakers
+    * @notice Allows a user to restake their UNO rewards
+    */
+    function restake() public {
+        UserInfo storage user = userInfo[msg.sender];
+        _updatePool();
+        uint256 pending = getAdjustedStake(msg.sender) * pool.accUnoPerShare / DECIMALS - user.rewardDebt;
+        require(pending > 0, "restake: nothing to restake");
+        user.amount += pending;
+        totalStakedEth += pending;
+        user.rewardDebt = getAdjustedStake(msg.sender) * pool.accUnoPerShare / DECIMALS;
+        emit Restake(msg.sender, pending);
+    }
+
+    /**
+    * @notice Updates the reward variables of the pool
+    * @dev This should be called every time a user deposits or withdraws ETH
     */
     function _updatePool() internal {
-        if (block.number <= pool.lastRewardBlock) {
+        if (block.number <= startBlock) {
             return;
         }
-
-        uint256 lpSupply = totalStakedEth;
-        if (lpSupply == 0) {
-            pool.lastRewardBlock = block.number;
-            return;
-        }
-
-        uint256 multiplier = _getMultiplier(pool.lastRewardBlock, block.number);
+        uint256 multiplier = block.number - startBlock;
         uint256 unoReward = multiplier * unoPerBlock;
-
-        SafeTransferLib.safeTransfer(address(uno), address(this), unoReward);
-        pool.accUnoPerShare = pool.accUnoPerShare + unoReward * DECIMALS / lpSupply;
+        pool.accUnoPerShare += unoReward * DECIMALS / totalStakedEth;
         pool.lastRewardBlock = block.number;
     }
 
     /**
-    * @notice Calculates the number of blocks between two block numbers
-    * @param _from The first block number
-    * @param _to The second block number
-    * @return The number of blocks between the two block numbers
+    * @notice Sends UNO rewards to a user
+    * @param _to The address of the user
+    * @param _amount The amount of UNO to send
     */
-    function _getMultiplier(uint256 _from, uint256 _to) internal pure returns (uint256) {
-        return _to - _from;
+    function safeUnoTransfer(address _to, uint256 _amount) internal {
+        uint256 unoBal = uno.balanceOf(address(this));
+        if (_amount > unoBal) {
+            uno.transfer(_to, unoBal);
+        } else {
+            uno.transfer(_to, _amount);
+        }
     }
 
     /**
-    * @notice Restakes the pending UNO rewards of a user
-    * @dev The UNO rewards are converted to ETH and staked back into the contract
+    * @notice Get the adjusted stake of a user considering insurance claims
     * @param _user The address of the user
-    * @param _amount The amount of UNO rewards to restake
-    * @return The amount of ETH received from swapping the UNO tokens
     */
-    function _restakeRewards(address _user, uint256 _amount) internal returns (uint256) {
-        address[] memory path = new address[](2);
-        path[0] = address(uno);
-        path[1] = uniswapRouter.WETH();
-
-        uint[] memory amountsOut = uniswapRouter.getAmountsOut(_amount, path);
-        uint expectedAmountOut = amountsOut[1];
-
-        // Here we assume that Uno is approved to be spent by this contract.
-        // If not, Uno should be approved first.
-        uno.transferFrom(_user, address(this), _amount);
-
-        uniswapRouter.swapExactTokensForETH(
-            _amount,
-            expectedAmountOut,
-            path,
-            address(this),
-            block.timestamp
-        );
-
-        // Return the actual received amount of Ether
-        return expectedAmountOut;
+    function getAdjustedStake(address _user) public view returns (uint256) {
+        UserInfo storage user = userInfo[_user];
+        uint256 claimRatio = totalInsuranceClaimed * DECIMALS / totalStakedEth;
+        uint256 adjustedStake = user.amount * (DECIMALS - claimRatio) / DECIMALS;
+        return adjustedStake;
     }
 
     /**
-    * @notice Allows the owner to withdraw Ether for an insurance payout
-    * @param _amount The amount of Ether to withdraw
+    * @notice Allows a user to claim their insurance
+    * @param _amount The amount of insurance to claim
     */
-    function insuranceClaimPayout(uint256 _amount) external onlyOwner {
-        uint256 balance = address(this).balance;
-        require(_amount <= balance*insuranceClaimLimit/100 );
-        totalStakedEth -= _amount; // Update total ETH staked
-        SafeTransferLib.safeTransferETH(owner(),_amount);
+    function claimInsurance(uint256 _amount) public {
+        require(_amount <= totalStakedEth * insuranceClaimLimit / DECIMALS, "Claim exceeds limit");
+        UserInfo storage user = userInfo[msg.sender];
+        uint256 userStake = getAdjustedStake(msg.sender);
+        require(_amount <= userStake, "Insufficient stake");
+        totalInsuranceClaimed += _amount;
+        user.amount -= _amount;
+        totalStakedEth -= _amount;
+        payable(msg.sender).transfer(_amount);
     }
+
 }
