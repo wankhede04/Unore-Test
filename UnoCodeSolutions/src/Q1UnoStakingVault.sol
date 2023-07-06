@@ -167,7 +167,7 @@ contract Vault is Ownable {
     * @notice Allows a user to claim their insurance
     * @param _amount The amount of insurance to claim
     */
-    function insuranseClaimPayout(uint256 _amount) public {
+    function insuranceClaimPayout(uint256 _amount) public {
         require(_amount <= totalStakedEth * insuranceClaimLimit / DECIMALS, "Claim exceeds limit");
         UserInfo storage user = userInfo[msg.sender];
         uint256 userStake = getAdjustedStake(msg.sender);
