@@ -3,8 +3,8 @@ pragma solidity ^0.8.4;
 
 contract StoreNumbers {
 
-    uint256 public currentCount = 0;
-    uint256[100] public numbers;
+    uint256 private currentCount = 0;
+    uint256[100] private numbers;
 
     // Error codes
     error ExceededLimit();
@@ -18,13 +18,16 @@ contract StoreNumbers {
         currentCount++;
     }
 
-    function batchAdd(uint256[] memory batchNumbers) public {
+    function batchAdd(uint256[] memory batchNumbers) external {
         if (batchNumbers.length == 0 || batchNumbers.length + currentCount > 100) {
             revert InvalidInput();
         }
-        for (uint256 i = 0; i < batchNumbers.length; i++) {
-            numbers[currentCount] = batchNumbers[i];
-            currentCount++;
+        uint len = batchNumbers.length
+        for (uint256 i; i < len;) {
+            add(batchNumbers[i])
+            unchecked {
+                ++i;
+            }
         }
     }
 
