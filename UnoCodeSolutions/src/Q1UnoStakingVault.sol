@@ -167,15 +167,12 @@ contract Vault is Ownable {
     * @notice Allows a user to claim their insurance
     * @param _amount The amount of insurance to claim
     */
-    function insuranceClaimPayout(uint256 _amount) public {
-        require(_amount <= totalStakedEth * insuranceClaimLimit / DECIMALS, "Claim exceeds limit");
-        UserInfo storage user = userInfo[msg.sender];
-        uint256 userStake = getAdjustedStake(msg.sender);
-        require(_amount <= userStake, "Insufficient stake");
-        totalInsuranceClaimed += _amount;
-        user.amount -= _amount;
-        totalStakedEth -= _amount;
-        payable(msg.sender).transfer(_amount);
+    function insuranceClaimPayout(uint256 _amount) external onlyOwner {
+        uint256 balance = address(this).balance;
+        require(_amount <= balance*insuranceClaimLimit/100 );
+        totalStakedEth -= _amount; // Update total ETH staked
+        totalInsuranceClaimed += amount;
+        SafeTransferLib.safeTransferETH(owner(),_amount);
     }
 
 }
