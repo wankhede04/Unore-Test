@@ -2,41 +2,24 @@
 pragma solidity 0.8.4;
 
 contract StoreNumbers {
+    uint256 private numbers;
 
-    uint256 private currentCount = 0;
-    uint256[100] private numbers;
-
-    // Error codes
-    error ExceededLimit();
-    error InvalidInput();
-
-    function add(uint256 number) public {
-        if (currentCount >= 100) {
-            revert ExceededLimit();
-        }
-        numbers[currentCount] = number;
-        currentCount++;
+    function addNumber(uint8 num) public {
+        require(num >= 1 && num <= 100, "Number must be between 1 and 100");
+        numbers |= (1 << (num - 1));
     }
 
-    function batchAdd(uint256[] memory batchNumbers) external {
-        if (batchNumbers.length == 0 || batchNumbers.length + currentCount > 100) {
-            revert InvalidInput();
-        }
-        uint len = batchNumbers.length;
-        for (uint256 i; i < len;) {
-        add(batchNumbers[i]);
-            unchecked {
-                ++i;
-            }
-        }
+    function removeNumber(uint8 num) public {
+        require(num >= 1 && num <= 100, "Number must be between 1 and 100");
+        numbers &= ~(1 << (num - 1));
     }
 
-    function getNumber(uint256 index) external view returns (uint256) {
-        require(index < currentCount, "Index out of bounds");
-        return numbers[index];
+    function checkNumber(uint8 num) public view returns (bool) {
+        require(num >= 1 && num <= 100, "Number must be between 1 and 100");
+        return ((numbers >> (num - 1)) & 1) == 1;
     }
 
-    function getAllNumbers() external view returns(uint256[100] memory) {
-        return numbers;
+    function setAllNumbers() public {
+        numbers = (1 << 100) - 1;
     }
 }
