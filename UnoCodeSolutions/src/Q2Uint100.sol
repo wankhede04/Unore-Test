@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.4;
+pragma solidity 0.8.4;
 
 contract StoreNumbers {
 
@@ -22,21 +22,21 @@ contract StoreNumbers {
         if (batchNumbers.length == 0 || batchNumbers.length + currentCount > 100) {
             revert InvalidInput();
         }
-        uint len = batchNumbers.length
+        uint len = batchNumbers.length;
         for (uint256 i; i < len;) {
-            add(batchNumbers[i])
+        add(batchNumbers[i]);
             unchecked {
                 ++i;
             }
         }
     }
 
-    function getNumber(uint256 index) public view returns (uint256) {
+    function getNumber(uint256 index) external view returns (uint256) {
         require(index < currentCount, "Index out of bounds");
         return numbers[index];
     }
 
-    function getAllNumbers() public view returns(uint256[100] memory) {
+    function getAllNumbers() external view returns(uint256[100] memory) {
         return numbers;
     }
 }
